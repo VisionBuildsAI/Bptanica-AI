@@ -1,0 +1,9 @@
+{
+  "name": "Botanica AI",
+  "description": "Your intelligent gardening assistant. Identify plants, diagnose diseases, and get expert care advice using advanced AI.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ]
+}
