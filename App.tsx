@@ -1,303 +1,208 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { HomeIcon, ScanLineIcon, SunIcon, LeafIcon } from './components/Icons';
+import React, { useState, useRef, useEffect } from 'react';
 import { PlantCard } from './components/PlantCard';
 import { ChatBot } from './components/ChatBot';
-import { LiveSession } from './components/LiveSession';
-import { PlantAnalysis, FileUpload, ViewState } from './types';
-import { analyzePlantImage, fileToGenerativePart } from './services/geminiService';
-
-interface WeatherData {
-  temp: number;
-  humidity: number;
-  condition: string;
-  isDay: boolean;
-}
+import { PlantDiagnosis, ViewState, PesticideAnalysis, FileUpload } from './types';
+import { analyzePlant, analyzePesticide, fileToGenerativePart } from './services/geminiService';
+import { ScanLineIcon, ShieldCheckIcon, UploadIcon, LeafIcon, WarningIcon, SunIcon, XIcon } from './components/Icons';
 
 const App: React.FC = () => {
-  const [viewState, setViewState] = useState<ViewState>(ViewState.HOME);
+  const [viewState, setViewState] = useState<ViewState>(ViewState.HERO);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<PlantAnalysis | null>(null);
+  const [plantResult, setPlantResult] = useState<PlantDiagnosis | null>(null);
+  const [pesticideResult, setPesticideResult] = useState<PesticideAnalysis | null>(null);
   const [uploadedFile, setUploadedFile] = useState<FileUpload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [city, setCity] = useState('');
+  const [weatherAlert, setWeatherAlert] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Weather State
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [greeting, setGreeting] = useState('Good Morning');
-
-  // Time based greeting
+  // Simulated Weather Alert for demo (in production would use API)
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good Morning');
-    else if (hour < 18) setGreeting('Good Afternoon');
-    else setGreeting('Good Evening');
-  }, []);
-
-  // Fetch Real-time Weather
-  useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          // Using Open-Meteo API (Free, no key required)
-          const response = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,is_day`
-          );
-          const data = await response.json();
-          
-          if (data.current) {
-             const code = data.current.weather_code;
-             let condition = "Clear";
-             if (code >= 1 && code <= 3) condition = "Cloudy";
-             else if (code >= 45 && code <= 48) condition = "Foggy";
-             else if (code >= 51 && code <= 67) condition = "Rainy";
-             else if (code >= 71 && code <= 77) condition = "Snowy";
-             else if (code >= 80 && code <= 99) condition = "Stormy";
-
-             setWeather({
-                 temp: Math.round(data.current.temperature_2m),
-                 humidity: data.current.relative_humidity_2m,
-                 condition: condition,
-                 isDay: data.current.is_day === 1
-             });
-          }
-        } catch (e) {
-          console.error("Weather fetch failed", e);
-        }
-      }, (error) => {
-          console.log("Geolocation error", error);
-      });
+    if (city.length > 3) {
+      // Mock alerting logic
+      const alerts = ["Heatwave Warning: Water crops at night", "Heavy Rain Forecast: Ensure drainage", null, null];
+      setWeatherAlert(alerts[Math.floor(Math.random() * alerts.length)]);
     }
-  }, []);
+  }, [city]);
 
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const previewUrl = URL.createObjectURL(file);
       setUploadedFile({ file, previewUrl });
-      setError(null);
-      setAnalysisResult(null);
-      
-      // Switch to Analysis View immediately
-      setViewState(ViewState.CAMERA); 
       setIsAnalyzing(true);
-
+      
       try {
-        // fileToGenerativePart now resizes and converts to JPEG for speed
-        const base64Data = await fileToGenerativePart(file);
-        // Use 'image/jpeg' as the service guarantees this format
-        const result = await analyzePlantImage(base64Data, 'image/jpeg');
-        setAnalysisResult(result);
-        setViewState(ViewState.ANALYSIS);
+        const base64 = await fileToGenerativePart(file);
+        
+        if (viewState === ViewState.PESTICIDE_CHECK) {
+           const result = await analyzePesticide(base64, file.type);
+           setPesticideResult(result);
+           // Remain in pesticide check view but show result
+        } else {
+           setViewState(ViewState.SCANNING); // Show scanning animation
+           const result = await analyzePlant(base64, file.type);
+           setPlantResult(result);
+           setViewState(ViewState.RESULT);
+        }
       } catch (err) {
         console.error(err);
-        setError("AI connection disrupted. Please try again.");
-        setViewState(ViewState.HOME); // Go back home on error so they can retry easily
+        alert("AI Analysis Failed. Please try again.");
+        setViewState(ViewState.HERO);
       } finally {
         setIsAnalyzing(false);
       }
     }
-  }, []);
-
-  const triggerFileUpload = () => {
-      fileInputRef.current?.click();
   };
 
-  const resetScanner = () => {
-    setViewState(ViewState.HOME);
+  const reset = () => {
+    setViewState(ViewState.HERO);
+    setPlantResult(null);
+    setPesticideResult(null);
     setUploadedFile(null);
-    setAnalysisResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // --- Components for different views ---
-
-  const HomeDashboard = () => (
-    <div className="flex flex-col h-full p-6 animate-fade-in pb-24">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-8">
-        <div>
-           <p className="text-gray-400 text-sm font-medium tracking-wide uppercase">{greeting}, Gardener</p>
-           <h1 className="text-3xl font-bold text-white mt-1">Garden Overview</h1>
-        </div>
-        <div className="glass-panel w-12 h-12 rounded-full flex items-center justify-center text-emerald-400">
-           <LeafIcon className="w-6 h-6" />
-        </div>
-      </div>
-
-      {/* Weather Widget (Real-time) */}
-      <div className="glass-card rounded-2xl p-5 mb-6 relative overflow-hidden group">
-         <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
-            <SunIcon className={`w-16 h-16 ${weather?.isDay ? 'text-amber-300' : 'text-blue-300'} animate-spin-slow`} />
-         </div>
-         <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-               <span className="text-xs text-green-400 font-bold uppercase tracking-wider">Live Weather</span>
-            </div>
-            {weather ? (
-                <>
-                    <div className="text-4xl font-bold text-white mb-1">{weather.temp}°C</div>
-                    <p className="text-sm text-gray-300">{weather.condition} • Humidity {weather.humidity}%</p>
-                </>
-            ) : (
-                <div className="space-y-2 animate-pulse">
-                    <div className="h-8 w-24 bg-white/10 rounded"></div>
-                    <div className="h-4 w-32 bg-white/10 rounded"></div>
-                    <p className="text-xs text-gray-500 mt-2">Locating...</p>
-                </div>
-            )}
-         </div>
-      </div>
-
-      {/* 3D Scan Button */}
-      <div className="mt-auto flex justify-center mb-12">
-        <button 
-          onClick={triggerFileUpload}
-          className="relative w-64 h-64 rounded-full flex items-center justify-center group"
-        >
-          {/* Pulsing rings */}
-          <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-pulse-glow"></div>
-          <div className="absolute inset-8 rounded-full bg-emerald-900/40 border border-emerald-500/30 backdrop-blur-sm"></div>
-          
-          {/* Inner Button */}
-          <div className="relative z-10 w-40 h-40 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-800 shadow-[0_10px_30px_rgba(16,185,129,0.4)] flex flex-col items-center justify-center transform group-hover:scale-105 transition-transform duration-300 group-active:scale-95">
-             <ScanLineIcon className="w-12 h-12 text-white mb-2" />
-             <span className="text-sm font-bold text-emerald-100 uppercase tracking-widest">Tap to Scan</span>
-          </div>
-        </button>
-      </div>
-
-      <div className="text-center text-gray-500 text-xs">
-         Supports any image size & type
-      </div>
-    </div>
-  );
-
-  const CameraScanner = () => (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-       {/* Background Image Preview */}
-       {uploadedFile?.previewUrl && (
-         <div className="absolute inset-0 z-0">
-            <img src={uploadedFile.previewUrl} className="w-full h-full object-cover opacity-60" alt="Scan" />
-         </div>
-       )}
-       
-       {/* Scanning Grid Overlay */}
-       <div className="absolute inset-0 z-10 bg-[url('https://www.transparenttextures.com/patterns/graphy-dark.png')] opacity-20"></div>
-       
-       {/* Scanner UI */}
-       <div className="relative z-20 flex-1 flex flex-col p-6">
-          <div className="flex justify-between items-center">
-             <div className="px-3 py-1 rounded-full bg-black/50 border border-emerald-500/50 text-emerald-400 text-xs font-mono">
-                AI VISION ACTIVE
-             </div>
-             <button onClick={resetScanner} className="p-2 bg-black/40 rounded-full text-white">
-                <span className="text-xs">CANCEL</span>
-             </button>
-          </div>
-
-          {/* Focus Box */}
-          <div className="flex-1 flex items-center justify-center">
-             <div className="relative w-64 h-64 border border-white/20 rounded-lg overflow-hidden">
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-emerald-500"></div>
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-emerald-500"></div>
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-emerald-500"></div>
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-emerald-500"></div>
-                
-                {/* Scanning Laser - Fast animation for "instant" feel */}
-                <div className="absolute left-0 right-0 h-1 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.8)] animate-scan" style={{ animationDuration: '1s' }}></div>
-                
-                {/* Particles */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-full text-center">
-                        <p className="text-emerald-400 font-mono text-xs animate-pulse">PROCESSING...</p>
-                    </div>
-                </div>
-             </div>
-          </div>
-       </div>
-    </div>
-  );
-
-  // --- Main Render ---
-
   return (
-    <div className="min-h-screen relative overflow-hidden bg-black font-sans selection:bg-emerald-500 selection:text-black">
-      
-      {/* Dynamic Background Mesh */}
-      <div className="fixed inset-0 mesh-gradient opacity-40 pointer-events-none z-0"></div>
+    <div className="min-h-screen relative font-sans">
+       {/* Background Elements */}
+       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-[#f0fdf4] to-white"></div>
+          {/* Floating Particles */}
+          <div className="particle w-2 h-2 top-1/4 left-1/4 animate-float" style={{animationDelay: '0s'}}></div>
+          <div className="particle w-3 h-3 top-1/2 left-2/3 animate-float" style={{animationDelay: '2s'}}></div>
+          <div className="particle w-1 h-1 top-3/4 left-1/3 animate-float" style={{animationDelay: '4s'}}></div>
+       </div>
 
-      {/* View Content */}
-      <main className="relative z-10 h-screen overflow-y-auto scrollbar-hide">
-         {viewState === ViewState.HOME && <HomeDashboard />}
-         {viewState === ViewState.CAMERA && <CameraScanner />}
-         {viewState === ViewState.ANALYSIS && analysisResult && uploadedFile && (
-            <PlantCard 
-                data={analysisResult} 
-                imagePreview={uploadedFile.previewUrl} 
-                onReset={resetScanner} 
-            />
-         )}
-         {viewState === ViewState.LIVE && (
-            <LiveSession onClose={() => setViewState(ViewState.HOME)} />
-         )}
-      </main>
+       <main className="relative z-10 h-screen flex flex-col">
+          
+          {/* --- HERO SECTION --- */}
+          {viewState === ViewState.HERO && (
+             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-fade-in relative">
+                
+                {/* Weather Widget */}
+                <div className="absolute top-6 left-6 right-6 flex justify-between items-start pointer-events-none">
+                   <div className="pointer-events-auto bg-white/60 backdrop-blur-md p-3 rounded-2xl shadow-sm border border-emerald-100 flex items-center gap-3">
+                      <SunIcon className="w-6 h-6 text-amber-500 animate-spin-slow" />
+                      <div>
+                         <input 
+                           type="text" 
+                           placeholder="Enter City" 
+                           value={city}
+                           onChange={(e) => setCity(e.target.value)}
+                           className="bg-transparent border-b border-gray-300 text-sm w-24 focus:outline-none focus:border-emerald-500 text-gray-700 placeholder:text-gray-400"
+                         />
+                         {weatherAlert && <p className="text-[10px] text-red-500 font-bold mt-1 animate-pulse">{weatherAlert}</p>}
+                      </div>
+                   </div>
+                   <button onClick={() => setViewState(ViewState.PESTICIDE_CHECK)} className="pointer-events-auto bg-white/60 backdrop-blur-md p-3 rounded-2xl shadow-sm border border-emerald-100 text-emerald-800 text-xs font-bold hover:bg-white transition-all">
+                      Check Pesticide
+                   </button>
+                </div>
 
-      {/* Global Bottom Navigation (Glassmorphism) */}
-      {viewState !== ViewState.CAMERA && viewState !== ViewState.LIVE && (
-          <nav className="fixed bottom-0 left-0 right-0 p-4 z-40">
-            <div className="glass-card rounded-2xl p-1 flex justify-center items-center h-16 max-w-lg mx-auto shadow-2xl">
-                <NavButton 
-                    active={viewState === ViewState.HOME} 
-                    onClick={() => setViewState(ViewState.HOME)} 
-                    icon={<HomeIcon className="w-6 h-6" />} 
-                    label="Home"
-                />
-            </div>
-          </nav>
-      )}
+                <div className="mb-8 relative">
+                   <div className="w-32 h-32 bg-emerald-500 rounded-full blur-[60px] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-20 animate-pulse"></div>
+                   <LeafIcon className="w-24 h-24 text-emerald-600 relative z-10 drop-shadow-lg" />
+                </div>
+                
+                <h1 className="text-5xl md:text-7xl font-heading font-bold text-emerald-950 mb-4 tracking-tight">
+                   AI Crop Doctor
+                </h1>
+                <p className="text-lg text-gray-600 max-w-md mx-auto mb-12 leading-relaxed">
+                   Upload a plant photo. Get the disease. Get the cure. <br/><span className="text-emerald-600 font-semibold">Instantly & Anonymously.</span>
+                </p>
 
-      {/* Hidden File Input */}
-      <input 
-          type="file" 
-          ref={fileInputRef}
-          onChange={handleFileUpload}
-          accept="image/*"
-          className="hidden"
-      />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="group relative px-8 py-5 bg-emerald-600 text-white rounded-full font-bold text-xl shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:shadow-[0_20px_40px_rgba(16,185,129,0.4)] hover:-translate-y-1 transition-all duration-300 btn-liquid overflow-hidden"
+                >
+                   <span className="relative z-10 flex items-center gap-3">
+                      <ScanLineIcon className="w-6 h-6 group-hover:animate-pulse" />
+                      Scan Your Plant
+                   </span>
+                </button>
 
-      {/* Error Toast */}
-      {error && (
-        <div className="fixed top-6 left-6 right-6 z-50 animate-fade-in-up">
-            <div className="glass-card border-l-4 border-red-500 bg-red-900/20 p-4 rounded-xl flex items-center gap-3">
-                <div className="text-red-400">⚠️</div>
-                <p className="text-red-200 text-sm font-medium">{error}</p>
-            </div>
-        </div>
-      )}
+                <p className="mt-8 text-xs text-gray-400 font-medium">
+                   No Login Required • 100% Free • Private
+                </p>
+             </div>
+          )}
 
-      {/* Chat Bot Overlay - Only show if not in camera/live mode */}
-      {viewState !== ViewState.CAMERA && viewState !== ViewState.LIVE && (
-          <ChatBot onStartLive={() => setViewState(ViewState.LIVE)} />
-      )}
-      
+          {/* --- SCANNING STATE --- */}
+          {viewState === ViewState.SCANNING && (
+             <div className="flex-1 flex flex-col items-center justify-center bg-black/95 text-white z-50">
+                 <div className="relative w-72 h-72">
+                    <img src={uploadedFile?.previewUrl} className="absolute inset-0 w-full h-full object-cover rounded-full opacity-50 blur-sm" />
+                    <div className="absolute inset-0 border-4 border-emerald-500/30 rounded-full animate-ping"></div>
+                    <div className="absolute inset-0 border-t-4 border-emerald-500 rounded-full animate-spin"></div>
+                 </div>
+                 <h2 className="mt-8 text-2xl font-bold animate-pulse text-emerald-400">Analyzing Bio-Markers...</h2>
+                 <p className="text-gray-400 mt-2">Identifying pathogen signatures</p>
+             </div>
+          )}
+
+          {/* --- RESULT STATE --- */}
+          {viewState === ViewState.RESULT && plantResult && uploadedFile && (
+             <PlantCard data={plantResult} imagePreview={uploadedFile.previewUrl} onReset={reset} />
+          )}
+
+          {/* --- PESTICIDE CHECKER --- */}
+          {viewState === ViewState.PESTICIDE_CHECK && (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-fade-in bg-slate-50">
+                  <button onClick={reset} className="absolute top-6 left-6 p-2 rounded-full bg-white shadow-sm"><XIcon className="w-6 h-6 text-gray-500" /></button>
+                  
+                  <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6 text-blue-600">
+                     <ShieldCheckIcon className="w-10 h-10" />
+                  </div>
+                  <h2 className="text-3xl font-bold text-slate-800 mb-2">Fake Pesticide Checker</h2>
+                  <p className="text-slate-500 mb-8 max-w-sm">Upload a photo of the bottle label. Our AI checks for genuine batch codes and packaging anomalies.</p>
+                  
+                  {!pesticideResult ? (
+                     <div 
+                       onClick={() => fileInputRef.current?.click()}
+                       className="w-full max-w-sm h-64 border-2 border-dashed border-blue-300 rounded-3xl flex flex-col items-center justify-center bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors"
+                     >
+                        {isAnalyzing ? (
+                           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                           <>
+                             <UploadIcon className="w-10 h-10 text-blue-400 mb-2" />
+                             <span className="font-bold text-blue-600">Tap to Upload Label</span>
+                           </>
+                        )}
+                     </div>
+                  ) : (
+                     <div className="w-full max-w-md bg-white p-8 rounded-3xl shadow-xl border border-slate-100 animate-scale-in">
+                        <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                           pesticideResult.status === 'GENUINE' ? 'bg-emerald-100 text-emerald-600' : 
+                           pesticideResult.status === 'EXPIRED' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                        }`}>
+                           {pesticideResult.status === 'GENUINE' ? <ShieldCheckIcon className="w-12 h-12" /> : <WarningIcon className="w-12 h-12" />}
+                        </div>
+                        <h3 className={`text-3xl font-bold mb-2 ${
+                           pesticideResult.status === 'GENUINE' ? 'text-emerald-600' : 
+                           pesticideResult.status === 'EXPIRED' ? 'text-amber-600' : 'text-red-600'
+                        }`}>
+                           {pesticideResult.status}
+                        </h3>
+                        <p className="text-gray-600 font-medium">{pesticideResult.product_name}</p>
+                        <div className="mt-6 text-left bg-slate-50 p-4 rounded-xl text-sm text-slate-700 leading-relaxed">
+                           {pesticideResult.details}
+                        </div>
+                        <button onClick={() => setPesticideResult(null)} className="mt-6 w-full py-3 bg-slate-900 text-white rounded-xl font-bold">Check Another</button>
+                     </div>
+                  )}
+              </div>
+          )}
+
+       </main>
+
+       {/* Hidden Input */}
+       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+
+       {/* Chat Bot (Global) */}
+       {viewState !== ViewState.SCANNING && <ChatBot />}
     </div>
   );
 };
-
-const NavButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-    <button 
-        onClick={onClick}
-        className={`flex flex-col items-center justify-center w-32 h-full rounded-xl transition-all duration-300 ${active ? 'text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}
-    >
-        <div className={`transform transition-transform duration-300 ${active ? '-translate-y-1' : ''}`}>
-            {icon}
-        </div>
-        {active && (
-            <span className="text-[10px] font-bold mt-1 animate-fade-in">{label}</span>
-        )}
-    </button>
-);
 
 export default App;

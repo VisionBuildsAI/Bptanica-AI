@@ -1,25 +1,18 @@
 import { GoogleGenAI, Type, Chat } from "@google/genai";
-import { PlantAnalysis } from "../types";
+import { PlantDiagnosis, PesticideAnalysis } from "../types";
 
-// Initialize Gemini AI
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const MODEL = "gemini-2.5-flash";
 
-// Switch to Flash model for high speed (1-2s typical latency) while maintaining good accuracy
-const ANALYSIS_MODEL = "gemini-2.5-flash";
-const CHAT_MODEL = "gemini-2.5-flash";
-
-// Helper to convert file to base64 with resizing and compression for speed
 export const fileToGenerativePart = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Resize logic: Limit max dimension to 1024px for faster processing
         const MAX_DIMENSION = 1024;
         let width = img.width;
         let height = img.height;
-
         if (width > height) {
           if (width > MAX_DIMENSION) {
             height = Math.round((height *= MAX_DIMENSION / width));
@@ -31,122 +24,153 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
             height = MAX_DIMENSION;
           }
         }
-
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error("Could not get canvas context"));
-          return;
-        }
-        
-        // Draw and compress to JPEG at 85% quality
+        if (!ctx) { reject(new Error("Canvas context failed")); return; }
         ctx.drawImage(img, 0, 0, width, height);
-        const base64String = canvas.toDataURL('image/jpeg', 0.85);
-        
-        // Remove data url prefix
-        resolve(base64String.split(',')[1]);
+        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
       };
-      img.onerror = (e) => reject(e);
       img.src = event.target?.result as string;
     };
-    reader.onerror = (e) => reject(e);
     reader.readAsDataURL(file);
   });
 };
 
-export const analyzePlantImage = async (base64Image: string, mimeType: string): Promise<PlantAnalysis> => {
+export const analyzePlant = async (base64: string, mimeType: string): Promise<PlantDiagnosis> => {
   const prompt = `
-    Analyze this plant image.
+    Act as a PhD Agronomist. Analyze this plant.
+    Provide a STRUCUTRED JSON response with:
+    1. Disease Name & Severity (LOW/MEDIUM/HIGH)
+    2. Cause & Spread Risk
+    3. RECOVERY: Is it recoverable? Time frame?
+    4. ORGANIC CURE: Detailed home remedy with ingredients (e.g. "Neem oil - 5ml"), mixing steps, and frequency.
+    5. CHEMICAL CURE: Real product names (e.g. "Imidacloprid"), dosage per liter, and harvest waiting period.
+    6. EMERGENCY: Immediate physical actions (e.g. "Cut infected leaves").
+    7. DAILY CARE: Morning/Afternoon/Evening routine.
     
-    1. **Identification**: Identify the plant's common name and scientific name accurately.
-    2. **Diagnosis**: Check for disease, pests, or issues. 
-       - If healthy, set 'has_disease' to false.
-       - If issues found, set 'has_disease' to true, identify the problem, and provide a confidence score (0-1).
-    3. **Care**: Provide care instructions.
-       - **Temperature**: Numeric range in Celsius (e.g., "18-24°C").
-       - **Water**: Frequency and amount.
-       - **Sunlight**: Light requirements.
-    4. **Treatment**: Cure instructions and prevention if diseased.
-    5. **Planting**: Propagation guide.
-
-    Return the result strictly as a valid JSON object.
+    Return strict JSON.
   `;
 
   const response = await ai.models.generateContent({
-    model: ANALYSIS_MODEL,
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType: mimeType,
-            data: base64Image
-          }
-        },
-        { text: prompt }
-      ]
-    },
+    model: MODEL,
+    contents: { parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          name: { type: Type.STRING, description: "Common name" },
-          scientific_name: { type: Type.STRING, description: "Scientific Latin name" },
-          description: { type: Type.STRING, description: "Description of plant status" },
-          care: {
+          plant_name: { type: Type.STRING },
+          disease_name: { type: Type.STRING },
+          is_healthy: { type: Type.BOOLEAN },
+          severity: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
+          cause: { type: Type.STRING },
+          spread_risk: { type: Type.STRING },
+          symptoms: { type: Type.ARRAY, items: { type: Type.STRING } },
+          is_recoverable: { type: Type.BOOLEAN },
+          recovery_time_days: { type: Type.STRING },
+          organic_treatments: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                ingredients: { 
+                  type: Type.ARRAY, 
+                  items: { 
+                    type: Type.OBJECT, 
+                    properties: { name: { type: Type.STRING }, quantity: { type: Type.STRING } } 
+                  } 
+                },
+                preparation_steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                application_frequency: { type: Type.STRING },
+                target_pests: { type: Type.ARRAY, items: { type: Type.STRING } },
+                safety_precautions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              }
+            }
+          },
+          chemical_treatments: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                product_name: { type: Type.STRING },
+                purpose: { type: Type.STRING },
+                dosage_per_liter: { type: Type.STRING },
+                application_frequency: { type: Type.STRING },
+                waiting_period_days: { type: Type.NUMBER },
+                safety_warning: { type: Type.STRING }
+              }
+            }
+          },
+          emergency_actions: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: { action: { type: Type.STRING }, reason: { type: Type.STRING } }
+            }
+          },
+          daily_care_plan: {
             type: Type.OBJECT,
             properties: {
-              water: { type: Type.STRING },
-              sunlight: { type: Type.STRING },
-              soil: { type: Type.STRING },
-              fertilizer: { type: Type.STRING },
-              temperature: { type: Type.STRING, description: "e.g. 20-25°C" },
-            },
-            required: ["water", "sunlight", "soil", "temperature"]
+              morning: { type: Type.ARRAY, items: { type: Type.STRING } },
+              afternoon: { type: Type.ARRAY, items: { type: Type.STRING } },
+              evening: { type: Type.ARRAY, items: { type: Type.STRING } },
+              weekly_prevention: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
           },
-          diagnosis: {
-            type: Type.OBJECT,
-            properties: {
-              has_disease: { type: Type.BOOLEAN },
-              disease_name: { type: Type.STRING },
-              symptoms: { type: Type.STRING },
-              cure_instructions: { type: Type.ARRAY, items: { type: Type.STRING } },
-              preventative_measures: { type: Type.ARRAY, items: { type: Type.STRING } },
-              confidence_score: { type: Type.NUMBER, description: "0.0 to 1.0" }
-            },
-            required: ["has_disease"]
-          },
-          planting_guide: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING }
-          }
-        },
-        required: ["name", "scientific_name", "description", "care", "diagnosis", "planting_guide"]
+          confidence_score: { type: Type.NUMBER }
+        }
       }
     }
   });
 
-  if (!response.text) {
-    throw new Error("No response from Gemini");
-  }
-
-  return JSON.parse(response.text) as PlantAnalysis;
+  if (!response.text) throw new Error("Analysis failed");
+  return JSON.parse(response.text) as PlantDiagnosis;
 };
 
-// Chat instance storage to maintain history per session
-let chatSession: Chat | null = null;
+export const analyzePesticide = async (base64: string, mimeType: string): Promise<PesticideAnalysis> => {
+  const prompt = `
+    Analyze this pesticide bottle/label image. 
+    Determine if it is Genuine, Fake, or Expired based on label quality, batch codes, and expiration dates visibility.
+    Return JSON.
+  `;
+  
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: { parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          is_genuine: { type: Type.BOOLEAN },
+          status: { type: Type.STRING, enum: ["GENUINE", "FAKE", "EXPIRED"] },
+          product_name: { type: Type.STRING },
+          manufacturer: { type: Type.STRING },
+          expiry_date_check: { type: Type.STRING },
+          confidence: { type: Type.NUMBER },
+          details: { type: Type.STRING }
+        }
+      }
+    }
+  });
+  
+  if (!response.text) throw new Error("Check failed");
+  return JSON.parse(response.text) as PesticideAnalysis;
+}
 
+let chatSession: Chat | null = null;
 export const getChatSession = (): Chat => {
   if (!chatSession) {
     chatSession = ai.chats.create({
-      model: CHAT_MODEL,
+      model: MODEL,
       config: {
-        systemInstruction: `You are 'Sprout', an expert botanist and gardening AI. 
-        Your goal is to provide accurate, scientific, yet easy-to-understand gardening advice.
-        When diagnosing issues, ask for details if the user's description is vague.
-        Always suggest organic and sustainable solutions first.`,
+        systemInstruction: `You are 'AI Crop Doctor', an expert agricultural consultant. 
+        Help users with follow-up questions about their plant diagnosis.
+        Keep answers concise, practical, and safe.
+        Support Hindi, Marathi, Bengali, Tamil, Telugu, and English.`,
       },
     });
   }
@@ -156,7 +180,6 @@ export const getChatSession = (): Chat => {
 export const sendMessageToBot = async function* (message: string) {
   const chat = getChatSession();
   const result = await chat.sendMessageStream({ message });
-  
   for await (const chunk of result) {
     yield chunk.text;
   }

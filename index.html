@@ -3,22 +3,96 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Botanica AI - Future Farm</title>
+    <title>AI Crop Doctor - Instant Cure</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        --neon-green: #10b981;
-        --neon-accent: #d4d4d8;
-        --glass-border: rgba(255, 255, 255, 0.1);
-        --glass-bg: rgba(20, 20, 20, 0.6);
+        --nature-green: #1a4d2e;
+        --leaf-green: #4f9a6c;
+        --soft-cream: #f8f9fa;
+        --sky-blue: #e0f2fe;
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --glass-bg: rgba(255, 255, 255, 0.7);
       }
 
       body {
-        font-family: 'Outfit', sans-serif;
-        background-color: #050505;
-        color: #e5e5e5;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background-color: #f0fdf4;
+        color: #1f2937;
         overflow-x: hidden;
+      }
+
+      h1, h2, h3, h4, .font-heading {
+        font-family: 'Outfit', sans-serif;
+      }
+
+      /* Cinematic Animations */
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 6s ease-in-out infinite;
+      }
+
+      @keyframes dust {
+        0% { transform: translateY(0) translateX(0); opacity: 0; }
+        50% { opacity: 0.5; }
+        100% { transform: translateY(-100px) translateX(50px); opacity: 0; }
+      }
+      .particle {
+        position: absolute;
+        background: rgba(255,255,255,0.6);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      /* Glassmorphism */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+      }
+
+      .glass-card {
+        background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.4));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.6);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      
+      .glass-card:hover {
+        transform: translateY(-5px) scale(1.01);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+        border-color: #4f9a6c;
+      }
+
+      /* Liquid Button */
+      .btn-liquid {
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+      .btn-liquid::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: rgba(255,255,255,0.2);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: width 0.6s, height 0.6s;
+      }
+      .btn-liquid:active::after {
+        width: 300%;
+        height: 300%;
       }
 
       /* Custom Scrollbar */
@@ -29,76 +103,6 @@
           -ms-overflow-style: none;
           scrollbar-width: none;
       }
-      
-      /* Glassmorphism Utilities */
-      .glass-panel {
-        background: var(--glass-bg);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid var(--glass-border);
-      }
-
-      .glass-card {
-        background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.08);
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-      }
-
-      /* Animations */
-      @keyframes float {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
-      }
-      .animate-float {
-        animation: float 6s ease-in-out infinite;
-      }
-
-      @keyframes pulse-glow {
-        0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); }
-        50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.6); }
-      }
-      .animate-pulse-glow {
-        animation: pulse-glow 3s infinite;
-      }
-
-      @keyframes scan-line {
-        0% { top: 0%; opacity: 0; }
-        10% { opacity: 1; }
-        90% { opacity: 1; }
-        100% { top: 100%; opacity: 0; }
-      }
-      .animate-scan {
-        animation: scan-line 2.5s linear infinite;
-      }
-
-      @keyframes spin-slow {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-      }
-      .animate-spin-slow {
-        animation: spin-slow 12s linear infinite;
-      }
-
-      @keyframes liquid-fill {
-        0% { height: 0%; }
-        100% { height: var(--target-height); }
-      }
-
-      /* Animated Gradient Background */
-      .mesh-gradient {
-        background: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
-                    radial-gradient(circle at 100% 0%, rgba(50, 40, 20, 0.2) 0%, transparent 40%),
-                    radial-gradient(circle at 0% 100%, rgba(20, 50, 40, 0.2) 0%, transparent 40%);
-        background-size: 200% 200%;
-        animation: gradient-move 15s ease infinite;
-      }
-
-      @keyframes gradient-move {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
     </style>
   <script type="importmap">
 {
@@ -106,12 +110,13 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0"
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "jspdf": "https://esm.sh/jspdf@2.5.1"
   }
 }
 </script>
 </head>
-  <body class="bg-black text-gray-100 antialiased selection:bg-emerald-500 selection:text-black">
+  <body class="bg-[#f2fcf5] text-gray-800 antialiased selection:bg-emerald-200 selection:text-emerald-900">
     <div id="root"></div>
   </body>
 </html>
