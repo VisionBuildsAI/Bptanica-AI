@@ -10,7 +10,9 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        const MAX_DIMENSION = 1024;
+        // Optimization: Drastically reduce resolution for faster inference (<1s target)
+        // 512px is sufficient for most leaf disease identification tasks
+        const MAX_DIMENSION = 512;
         let width = img.width;
         let height = img.height;
         if (width > height) {
@@ -29,8 +31,11 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) { reject(new Error("Canvas context failed")); return; }
+        
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+        
+        // Optimization: Lower JPEG quality to 0.6 to reduce payload size significantly
+        resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
       };
       img.src = event.target?.result as string;
     };
@@ -39,19 +44,8 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
 };
 
 export const analyzePlant = async (base64: string, mimeType: string): Promise<PlantDiagnosis> => {
-  const prompt = `
-    Act as a PhD Agronomist. Analyze this plant.
-    Provide a STRUCUTRED JSON response with:
-    1. Disease Name & Severity (LOW/MEDIUM/HIGH)
-    2. Cause & Spread Risk
-    3. RECOVERY: Is it recoverable? Time frame?
-    4. ORGANIC CURE: Detailed home remedy with ingredients (e.g. "Neem oil - 5ml"), mixing steps, and frequency.
-    5. CHEMICAL CURE: Real product names (e.g. "Imidacloprid"), dosage per liter, and harvest waiting period.
-    6. EMERGENCY: Immediate physical actions (e.g. "Cut infected leaves").
-    7. DAILY CARE: Morning/Afternoon/Evening routine.
-    
-    Return strict JSON.
-  `;
+  // Optimization: concise prompt to reduce input token processing time
+  const prompt = `Analyze plant. Return strict JSON.`;
 
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -131,11 +125,7 @@ export const analyzePlant = async (base64: string, mimeType: string): Promise<Pl
 };
 
 export const analyzePesticide = async (base64: string, mimeType: string): Promise<PesticideAnalysis> => {
-  const prompt = `
-    Analyze this pesticide bottle/label image. 
-    Determine if it is Genuine, Fake, or Expired based on label quality, batch codes, and expiration dates visibility.
-    Return JSON.
-  `;
+  const prompt = `Analyze pesticide label: Genuine/Fake/Expired? Return JSON.`;
   
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -167,10 +157,7 @@ export const getChatSession = (): Chat => {
     chatSession = ai.chats.create({
       model: MODEL,
       config: {
-        systemInstruction: `You are 'AI Crop Doctor', an expert agricultural consultant. 
-        Help users with follow-up questions about their plant diagnosis.
-        Keep answers concise, practical, and safe.
-        Support Hindi, Marathi, Bengali, Tamil, Telugu, and English.`,
+        systemInstruction: `You are 'AI Crop Doctor'. Help users with plant health. Concise answers.`,
       },
     });
   }

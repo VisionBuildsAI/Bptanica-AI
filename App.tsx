@@ -24,13 +24,14 @@ const App: React.FC = () => {
     }
   }, [city]);
 
-  // Simulate scanning progress steps
+  // Simulate scanning progress steps - Optimized for speed
   useEffect(() => {
     if (viewState === ViewState.SCANNING) {
       const steps = [0, 1, 2, 3];
       setScanStep(0);
       steps.forEach(step => {
-         setTimeout(() => setScanStep(step), step * 800);
+         // Faster animation steps to match optimized backend (250ms per step)
+         setTimeout(() => setScanStep(step), step * 250);
       });
     }
   }, [viewState]);
@@ -43,6 +44,7 @@ const App: React.FC = () => {
       setIsAnalyzing(true);
       
       try {
+        // fileToGenerativePart is now optimized for size
         const base64 = await fileToGenerativePart(file);
         
         if (viewState === ViewState.PESTICIDE_CHECK) {
