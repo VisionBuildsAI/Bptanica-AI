@@ -12,8 +12,6 @@
         --leaf-green: #4f9a6c;
         --soft-cream: #f8f9fa;
         --sky-blue: #e0f2fe;
-        --glass-border: rgba(255, 255, 255, 0.2);
-        --glass-bg: rgba(255, 255, 255, 0.7);
       }
 
       body {
@@ -21,6 +19,21 @@
         background-color: #f0fdf4;
         color: #1f2937;
         overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Noise Texture for Premium Feel */
+      .bg-noise {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.03;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
       }
 
       h1, h2, h3, h4, .font-heading {
@@ -30,72 +43,84 @@
       /* Cinematic Animations */
       @keyframes float {
         0% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
+        50% { transform: translateY(-15px); }
         100% { transform: translateY(0px); }
       }
       .animate-float {
-        animation: float 6s ease-in-out infinite;
+        animation: float 8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
       }
 
-      @keyframes dust {
-        0% { transform: translateY(0) translateX(0); opacity: 0; }
-        50% { opacity: 0.5; }
-        100% { transform: translateY(-100px) translateX(50px); opacity: 0; }
+      @keyframes fade-in-up {
+        0% { opacity: 0; transform: translateY(20px); }
+        100% { opacity: 1; transform: translateY(0); }
       }
-      .particle {
-        position: absolute;
-        background: rgba(255,255,255,0.6);
-        border-radius: 50%;
-        pointer-events: none;
+      .animate-fade-in-up {
+        animation: fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
 
-      /* Glassmorphism */
+      @keyframes scale-in {
+        0% { opacity: 0; transform: scale(0.95); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .animate-scale-in {
+        animation: scale-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      /* Scanning Animation */
+      @keyframes scan-grid {
+        0% { background-position: 0% 0%; }
+        100% { background-position: 0% 100%; }
+      }
+      .scan-overlay {
+        background: linear-gradient(180deg, rgba(16, 185, 129, 0) 0%, rgba(16, 185, 129, 0.2) 50%, rgba(16, 185, 129, 0) 100%);
+        background-size: 100% 200%;
+        animation: scan-grid 2s linear infinite;
+      }
+
+      /* Glassmorphism Refined */
       .glass-panel {
-        background: rgba(255, 255, 255, 0.65);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.8);
         box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
       }
 
+      .glass-pill {
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+      }
+
       .glass-card {
-        background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.4));
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.6);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        background: linear-gradient(145deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.7);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
       }
       
       .glass-card:hover {
-        transform: translateY(-5px) scale(1.01);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.06);
-        border-color: #4f9a6c;
+        transform: translateY(-4px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.01);
+        border-color: #34d399;
       }
 
       /* Liquid Button */
       .btn-liquid {
         position: relative;
         overflow: hidden;
-        transition: all 0.3s ease;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       }
-      .btn-liquid::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        background: rgba(255,255,255,0.2);
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        transition: width 0.6s, height 0.6s;
+      .btn-liquid:hover {
+        transform: scale(1.02);
       }
-      .btn-liquid:active::after {
-        width: 300%;
-        height: 300%;
+      .btn-liquid:active {
+        transform: scale(0.98);
       }
 
-      /* Custom Scrollbar */
+      /* Scrollbar */
       .scrollbar-hide::-webkit-scrollbar {
           display: none;
       }
@@ -116,7 +141,7 @@
 }
 </script>
 </head>
-  <body class="bg-[#f2fcf5] text-gray-800 antialiased selection:bg-emerald-200 selection:text-emerald-900">
+  <body class="bg-[#f0fdf4] text-gray-800 antialiased selection:bg-emerald-200 selection:text-emerald-900">
     <div id="root"></div>
   </body>
 </html>
