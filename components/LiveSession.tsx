@@ -1,6 +1,7 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { GeminiLiveClient, LiveClientStatus } from '../services/liveClient';
-import { MicIcon, MicOffIcon, VideoIcon, VideoOffIcon, PhoneXIcon, SparklesIcon } from './Icons';
+import { MicIcon, MicOffIcon, VideoIcon, VideoOffIcon, PhoneXIcon, SparklesIcon, WarningIcon } from './Icons';
 
 interface LiveSessionProps {
   onClose: () => void;
@@ -19,7 +20,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
   const clientRef = useRef<GeminiLiveClient | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Initialize Client
   useEffect(() => {
     clientRef.current = new GeminiLiveClient(setStatus);
     return () => {
@@ -33,11 +33,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
   const startSession = async () => {
     try {
       setHasStarted(true);
-      
-      // Get User Media for Local Preview & Sending
+      setStatus({ isConnected: false, error: null });
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
           audio: true, 
-          video: { facingMode: 'environment' } // Prefer back camera for plants
+          video: { 
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
       });
       streamRef.current = stream;
       
@@ -47,23 +51,31 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
 
       await clientRef.current?.connect(language, stream);
 
-    } catch (err) {
-      console.error("Error starting session:", err);
-      setStatus({ isConnected: false, error: "Camera/Mic access denied" });
+    } catch (err: any) {
+      console.error("Session start error:", err);
+      let errorMsg = "Camera/Mic access denied.";
+      if (err.name === 'NotAllowedError') errorMsg = "Please enable Camera and Mic permissions in your browser settings.";
+      setStatus({ isConnected: false, error: errorMsg });
     }
   };
 
   const toggleMute = () => {
     if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach(t => t.enabled = isMuted);
-      setIsMuted(!isMuted);
+      const audioTrack = streamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = isMuted; // Toggle based on current state
+        setIsMuted(!isMuted);
+      }
     }
   };
 
   const toggleVideo = () => {
     if (streamRef.current) {
-      streamRef.current.getVideoTracks().forEach(t => t.enabled = !isVideoEnabled);
-      setIsVideoEnabled(!isVideoEnabled);
+      const videoTrack = streamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isVideoEnabled;
+        setIsVideoEnabled(!isVideoEnabled);
+      }
     }
   };
 
@@ -74,18 +86,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
 
   if (!hasStarted) {
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 animate-fade-in">
+      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 animate-fade-in overflow-hidden">
         <div className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-3xl p-8 shadow-2xl">
            <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center animate-pulse">
+              <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center">
                  <SparklesIcon className="w-10 h-10 text-emerald-400" />
               </div>
            </div>
            
-           <h2 className="text-2xl font-bold text-white text-center mb-2">Live Plant Expert</h2>
-           <p className="text-gray-400 text-center text-sm mb-8">
-             Connect with our AI botanist for real-time video diagnosis. 
-             Choose your preferred language.
+           <h2 className="text-2xl font-bold text-white text-center mb-2">Live Expert</h2>
+           <p className="text-gray-400 text-center text-sm mb-8 leading-relaxed">
+             Get real-time garden arrangement tips and plant diagnosis. 
+             Choose your language to begin.
            </p>
 
            <div className="space-y-3 mb-8">
@@ -93,10 +105,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
                <button 
                  key={lang}
                  onClick={() => setLanguage(lang)}
-                 className={`w-full py-4 rounded-xl border font-medium transition-all ${
+                 className={`w-full py-4 rounded-xl border font-medium transition-all active:scale-95 ${
                    language === lang 
-                     ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/50' 
-                     : 'bg-black border-zinc-700 text-gray-400 hover:bg-zinc-800'
+                     ? 'bg-emerald-600 border-emerald-500 text-white' 
+                     : 'bg-black border-zinc-700 text-gray-400'
                  }`}
                >
                  {lang}
@@ -106,16 +118,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
 
            <button 
              onClick={startSession}
-             className="w-full py-4 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors"
+             className="w-full py-5 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors shadow-lg active:scale-95"
            >
              Start Live Session
            </button>
            
            <button 
              onClick={onClose}
-             className="w-full mt-4 text-gray-500 text-sm hover:text-white"
+             className="w-full mt-6 text-gray-500 text-sm font-medium"
            >
-             Cancel
+             Go Back
            </button>
         </div>
       </div>
@@ -123,49 +135,58 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col overflow-hidden">
+       {/* Error Toast */}
+       {status.error && (
+         <div className="absolute top-20 left-6 right-6 z-[60] animate-bounce">
+            <div className="bg-red-500 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3">
+               <WarningIcon className="w-5 h-5 flex-shrink-0" />
+               <p className="text-xs font-bold leading-tight">{status.error}</p>
+            </div>
+         </div>
+       )}
+
        {/* Video Background */}
-       <div className="relative flex-1 bg-black overflow-hidden">
+       <div className="relative flex-1 bg-black">
          <video 
             ref={videoRef} 
             autoPlay 
             playsInline 
             muted 
-            className={`w-full h-full object-cover ${!isVideoEnabled ? 'opacity-0' : 'opacity-100'}`}
+            className={`w-full h-full object-cover transition-opacity duration-500 ${!isVideoEnabled ? 'opacity-0' : 'opacity-100'}`}
          />
          {!isVideoEnabled && (
-           <div className="absolute inset-0 flex items-center justify-center">
-             <div className="w-24 h-24 rounded-full bg-zinc-800 flex items-center justify-center">
-               <VideoOffIcon className="w-10 h-10 text-gray-500" />
+           <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
+             <div className="w-24 h-24 rounded-full bg-zinc-900 flex items-center justify-center">
+               <VideoOffIcon className="w-10 h-10 text-zinc-700" />
              </div>
            </div>
          )}
          
-         {/* Status Overlay */}
-         <div className="absolute top-6 left-6 right-6 flex justify-between items-start">
-            <div className="bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
-               <div className={`w-2 h-2 rounded-full ${status.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
-               <span className="text-xs font-bold text-white uppercase tracking-wider">
-                 {status.isConnected ? 'Live Expert' : 'Connecting...'}
+         {/* Top Controls */}
+         <div className="absolute top-[env(safe-area-inset-top,24px)] left-6 right-6 flex justify-between items-center">
+            <div className="bg-black/60 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
+               <div className={`w-2 h-2 rounded-full ${status.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></div>
+               <span className="text-[10px] font-black text-white uppercase tracking-widest">
+                 {status.isConnected ? 'Live Expert Online' : 'Connecting...'}
                </span>
             </div>
-            
-            <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs text-white">
+            <div className="bg-emerald-600/20 backdrop-blur-xl px-3 py-1 rounded-full border border-emerald-500/20 text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">
                {language}
             </div>
          </div>
 
-         {/* Visualizer Overlay (Fake for UI feel) */}
+         {/* Audio Visualizer Overlay */}
          {status.isConnected && (
-            <div className="absolute bottom-32 left-0 right-0 h-16 flex items-center justify-center gap-1 opacity-60">
-               {[...Array(10)].map((_, i) => (
+            <div className="absolute bottom-36 left-0 right-0 h-12 flex items-center justify-center gap-1.5 opacity-40">
+               {[...Array(12)].map((_, i) => (
                   <div 
                     key={i} 
-                    className="w-1 bg-emerald-400 rounded-full animate-wave" 
+                    className="w-1 bg-white rounded-full animate-wave" 
                     style={{ 
                       height: '20%', 
-                      animationDelay: `${i * 0.1}s`,
-                      animationDuration: '0.8s' 
+                      animationDelay: `${i * 0.08}s`,
+                      animationDuration: '0.6s' 
                     }}
                   ></div>
                ))}
@@ -173,25 +194,25 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ onClose }) => {
          )}
        </div>
 
-       {/* Controls */}
-       <div className="h-28 bg-black/80 backdrop-blur-xl border-t border-white/10 flex items-center justify-center gap-8 pb-4">
+       {/* Main Controls Area */}
+       <div className="pb-[env(safe-area-inset-bottom,24px)] pt-6 bg-zinc-950 border-t border-white/5 flex items-center justify-center gap-6">
           <button 
             onClick={toggleVideo}
-            className={`p-4 rounded-full transition-colors ${!isVideoEnabled ? 'bg-white text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${!isVideoEnabled ? 'bg-white text-black' : 'bg-zinc-800 text-white'}`}
           >
              {isVideoEnabled ? <VideoIcon className="w-6 h-6" /> : <VideoOffIcon className="w-6 h-6" />}
           </button>
 
           <button 
             onClick={handleEndCall}
-            className="p-5 bg-red-500 rounded-full text-white shadow-lg shadow-red-900/50 hover:scale-105 transition-transform"
+            className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center text-white shadow-[0_0_50px_rgba(239,68,68,0.3)] active:scale-90 transition-transform"
           >
-             <PhoneXIcon className="w-8 h-8" />
+             <PhoneXIcon className="w-10 h-10" />
           </button>
 
           <button 
             onClick={toggleMute}
-            className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-white text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-white text-black' : 'bg-zinc-800 text-white'}`}
           >
              {isMuted ? <MicOffIcon className="w-6 h-6" /> : <MicIcon className="w-6 h-6" />}
           </button>

@@ -1,6 +1,7 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 
-const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-09-2025';
+const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 export interface LiveClientStatus {
   isConnected: boolean;
@@ -8,7 +9,6 @@ export interface LiveClientStatus {
 }
 
 export class GeminiLiveClient {
-  private ai: GoogleGenAI;
   private audioContext: AudioContext | null = null;
   private inputSource: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
@@ -19,33 +19,40 @@ export class GeminiLiveClient {
   private currentStream: MediaStream | null = null;
   
   constructor(statusCallback: (status: LiveClientStatus) => void) {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     this.statusChangeCallback = statusCallback;
   }
 
   async connect(language: string, videoStream: MediaStream | null) {
-    this.stop(); // Ensure clean state
+    // Always use the latest injected key
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      this.statusChangeCallback({ isConnected: false, error: "API Key unavailable. Please wait and retry." });
+      return;
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    this.stop(); 
     this.currentStream = videoStream;
     this.statusChangeCallback({ isConnected: false, error: null });
 
     try {
-      // 1. Initialize Audio Contexts (must be done after user gesture)
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       await this.audioContext.resume();
 
-      const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      await inputAudioContext.resume();
-
-      // 2. Setup Audio Input
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.inputSource = inputAudioContext.createMediaStreamSource(micStream);
-      this.processor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+      this.inputSource = this.audioContext.createMediaStreamSource(micStream);
+      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-      // 3. Define Config
-      // We explicitly follow the prompt's Live API example structure.
-      const systemInstruction = `You are 'Sprout', a gardening expert. User language: ${language}. Answer concisely.`;
+      const systemInstruction = `You are 'Botanica Live', a master garden architect and plant pathologist. 
+      The user is showing you their plants or garden in real-time. 
+      Your mission:
+      1. DIAGNOSE: If shown a leaf, identify pests, diseases, or nutrient deficiencies immediately. Explain how to cure it clearly.
+      2. ARRANGE: If shown a garden space, look at empty spots and lighting. Suggest aesthetic and functional improvements (e.g., 'Move the succulents to that sunny corner', 'Add a trellis here').
+      3. IMPROVE: Recommend specific plants to add based on the environment you see (sun/shade/size).
+      4. FIND: When you recommend a plant or treatment, use Google Search to find where the user can find or buy it online or in major nurseries.
+      User Language: ${language}. Be conversational, expert, and encouraging. Respond with audio.`;
 
-      this.sessionPromise = this.ai.live.connect({
+      this.sessionPromise = ai.live.connect({
         model: MODEL_NAME,
         config: {
           responseModalities: [Modality.AUDIO], 
@@ -53,37 +60,33 @@ export class GeminiLiveClient {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
           systemInstruction: systemInstruction,
+          tools: [{ googleSearch: {} }]
         },
         callbacks: {
           onopen: () => {
             console.log("Gemini Live: Connected");
             this.statusChangeCallback({ isConnected: true, error: null });
-            
-            // Start processing audio input
             this.startAudioInput();
-            
-            // Start processing video input if available
             if (this.currentStream) {
                this.startVideoInput(this.currentStream);
             }
           },
           onmessage: (message: LiveServerMessage) => this.handleMessage(message),
           onclose: () => {
-            console.log("Gemini Live: Closed");
             this.statusChangeCallback({ isConnected: false, error: null });
             this.stop();
           },
           onerror: (err) => {
-            console.error("Gemini Live: Error", err);
-            this.statusChangeCallback({ isConnected: false, error: "Connection failed. Please retry." });
+            console.error("Gemini Live Error:", err);
+            this.statusChangeCallback({ isConnected: false, error: "Connection lost. Please retry." });
             this.stop();
           }
         }
       });
 
     } catch (e) {
-      console.error("Gemini Live: Setup Failed", e);
-      this.statusChangeCallback({ isConnected: false, error: "Failed to start audio/video. Check permissions." });
+      console.error("Gemini Live Setup Failed:", e);
+      this.statusChangeCallback({ isConnected: false, error: "Microphone/API access failed." });
       this.stop();
     }
   }
@@ -99,45 +102,36 @@ export class GeminiLiveClient {
       this.sessionPromise?.then(session => {
         session.sendRealtimeInput({
           media: {
-            mimeType: "audio/pcm;rate=16000",
+            mimeType: "audio/pcm;rate=24000",
             data: base64Data
           }
         });
-      }).catch(err => {
-        // Suppress errors if session is closed/closing
-        console.debug("Error sending audio input:", err);
-      });
+      }).catch(() => {});
     };
 
     this.inputSource.connect(this.processor);
-    this.processor.connect(this.inputSource.context.destination);
+    this.processor.connect(this.audioContext!.destination);
   }
 
   private startVideoInput(stream: MediaStream) {
-     const videoTrack = stream.getVideoTracks()[0];
-     if (!videoTrack) return;
-
      const video = document.createElement('video');
      video.srcObject = stream;
      video.muted = true;
-     video.play().catch(e => console.error("Video play error", e));
+     video.playsInline = true;
+     video.play().catch(() => {});
      
      const canvas = document.createElement('canvas');
-     const ctx = canvas.getContext('2d');
+     const ctx = canvas.getContext('2d', { alpha: false });
      
-     // Send frames at 1 FPS
      this.videoInterval = window.setInterval(() => {
         if (!ctx || video.readyState !== 4) return;
         
-        // Downscale to 640px max width for bandwidth optimization
         const scale = Math.min(640 / video.videoWidth, 480 / video.videoHeight);
         canvas.width = video.videoWidth * scale;
         canvas.height = video.videoHeight * scale;
         
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Quality 0.6 is sufficient for AI analysis
-        const base64Data = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
         
         this.sessionPromise?.then(session => {
            session.sendRealtimeInput({
@@ -146,9 +140,7 @@ export class GeminiLiveClient {
                  data: base64Data
               }
            });
-        }).catch(err => {
-           console.debug("Error sending video frame:", err);
-        });
+        }).catch(() => {});
 
      }, 1000); 
   }
@@ -173,10 +165,8 @@ export class GeminiLiveClient {
       bytes[i] = binaryString.charCodeAt(i);
     }
     
-    // Convert raw PCM 24kHz mono to AudioBuffer
     const pcmData = new Int16Array(bytes.buffer);
     const floatData = new Float32Array(pcmData.length);
-    
     for (let i = 0; i < pcmData.length; i++) {
       floatData[i] = pcmData[i] / 32768.0;
     }
@@ -187,7 +177,7 @@ export class GeminiLiveClient {
   }
 
   private playAudio(buffer: AudioBuffer) {
-    if (!this.audioContext) return;
+    if (!this.audioContext || this.audioContext.state === 'suspended') return;
     
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;
@@ -221,6 +211,7 @@ export class GeminiLiveClient {
     }
     this.sessionPromise = null;
     this.currentStream = null;
+    this.nextStartTime = 0;
   }
 
   private float32ToInt16(float32: Float32Array): Int16Array {

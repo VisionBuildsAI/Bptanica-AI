@@ -1,41 +1,46 @@
+
 import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { PlantDiagnosis, PesticideAnalysis } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3-flash-preview";
+
+// Lazy initialization function to ensure process.env.API_KEY is captured at call time
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const fileToGenerativePart = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file"));
     reader.onload = (event) => {
       const img = new Image();
+      img.onerror = () => reject(new Error("Failed to load image"));
       img.onload = () => {
-        // Optimization: Drastically reduce resolution for faster inference (<1s target)
-        // 512px is sufficient for most leaf disease identification tasks
-        const MAX_DIMENSION = 512;
+        const MAX_DIMENSION = 800;
         let width = img.width;
         let height = img.height;
+        
         if (width > height) {
           if (width > MAX_DIMENSION) {
-            height = Math.round((height *= MAX_DIMENSION / width));
+            height *= MAX_DIMENSION / width;
             width = MAX_DIMENSION;
           }
         } else {
           if (height > MAX_DIMENSION) {
-            width = Math.round((width *= MAX_DIMENSION / height));
+            width *= MAX_DIMENSION / height;
             height = MAX_DIMENSION;
           }
         }
+
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) { reject(new Error("Canvas context failed")); return; }
         
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        
-        // Optimization: Lower JPEG quality to 0.6 to reduce payload size significantly
-        resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
+        resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
       };
       img.src = event.target?.result as string;
     };
@@ -44,8 +49,16 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
 };
 
 export const analyzePlant = async (base64: string, mimeType: string): Promise<PlantDiagnosis> => {
-  // Optimization: concise prompt to reduce input token processing time
-  const prompt = `Analyze plant. Return strict JSON.`;
+  const ai = getAI();
+  const prompt = `Act as a Master Plant Pathologist. Analyze the uploaded image.
+  
+  CRITICAL INSTRUCTIONS:
+  1. Identify the plant and any specific disease, pest, or nutrient deficiency.
+  2. If the plant is HEALTHY, still provide a "Preventative Daily Care Plan" and "Organic Prevention" tips. NEVER leave these arrays empty.
+  3. SPREAD RISK: Provide a descriptive string (e.g., "High - Fungal spores can infect nearby leaves within 48 hours").
+  4. DAILY CARE: Provide at least 2 specific instructions for Morning, Afternoon, and Evening.
+  5. RECOVERY TIME: Estimate a realistic range in days.
+  6. Return strictly as a valid JSON object matching the provided schema.`;
 
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -54,18 +67,20 @@ export const analyzePlant = async (base64: string, mimeType: string): Promise<Pl
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
+        required: ["plant_name", "disease_name", "is_healthy", "severity", "spread_risk", "organic_treatments", "daily_care_plan"],
         properties: {
-          plant_name: { type: Type.STRING },
-          disease_name: { type: Type.STRING },
+          plant_name: { type: Type.STRING, description: "Common name of the plant" },
+          disease_name: { type: Type.STRING, description: "Name of the disease or 'Healthy'" },
           is_healthy: { type: Type.BOOLEAN },
           severity: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
           cause: { type: Type.STRING },
-          spread_risk: { type: Type.STRING },
+          spread_risk: { type: Type.STRING, description: "Detailed risk of spreading to other plants" },
           symptoms: { type: Type.ARRAY, items: { type: Type.STRING } },
           is_recoverable: { type: Type.BOOLEAN },
           recovery_time_days: { type: Type.STRING },
           organic_treatments: {
             type: Type.ARRAY,
+            minItems: 1,
             items: {
               type: Type.OBJECT,
               properties: {
@@ -108,9 +123,9 @@ export const analyzePlant = async (base64: string, mimeType: string): Promise<Pl
           daily_care_plan: {
             type: Type.OBJECT,
             properties: {
-              morning: { type: Type.ARRAY, items: { type: Type.STRING } },
-              afternoon: { type: Type.ARRAY, items: { type: Type.STRING } },
-              evening: { type: Type.ARRAY, items: { type: Type.STRING } },
+              morning: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: 1 },
+              afternoon: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: 1 },
+              evening: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: 1 },
               weekly_prevention: { type: Type.ARRAY, items: { type: Type.STRING } }
             }
           },
@@ -120,12 +135,14 @@ export const analyzePlant = async (base64: string, mimeType: string): Promise<Pl
     }
   });
 
-  if (!response.text) throw new Error("Analysis failed");
-  return JSON.parse(response.text) as PlantDiagnosis;
+  const text = response.text;
+  if (!text) throw new Error("No analysis returned from AI");
+  return JSON.parse(text) as PlantDiagnosis;
 };
 
 export const analyzePesticide = async (base64: string, mimeType: string): Promise<PesticideAnalysis> => {
-  const prompt = `Analyze pesticide label: Genuine/Fake/Expired? Return JSON.`;
+  const ai = getAI();
+  const prompt = `Verify the pesticide label for authenticity, expiry, and safety. Return JSON.`;
   
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -147,17 +164,19 @@ export const analyzePesticide = async (base64: string, mimeType: string): Promis
     }
   });
   
-  if (!response.text) throw new Error("Check failed");
-  return JSON.parse(response.text) as PesticideAnalysis;
+  const text = response.text;
+  if (!text) throw new Error("No data returned from AI");
+  return JSON.parse(text) as PesticideAnalysis;
 }
 
 let chatSession: Chat | null = null;
 export const getChatSession = (): Chat => {
   if (!chatSession) {
+    const ai = getAI();
     chatSession = ai.chats.create({
       model: MODEL,
       config: {
-        systemInstruction: `You are 'AI Crop Doctor'. Help users with plant health. Concise answers.`,
+        systemInstruction: `You are 'Botanica Expert'. Provide high-accuracy gardening advice. Be concise and professional.`,
       },
     });
   }

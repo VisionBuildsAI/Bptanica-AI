@@ -1,10 +1,10 @@
 
-
 export enum ViewState {
   HERO = 'HERO',
   SCANNING = 'SCANNING',
   RESULT = 'RESULT',
-  PESTICIDE_CHECK = 'PESTICIDE_CHECK'
+  PESTICIDE_CHECK = 'PESTICIDE_CHECK',
+  LIVE = 'LIVE'
 }
 
 export interface User {
@@ -22,7 +22,7 @@ export interface OrganicTreatment {
 }
 
 export interface ChemicalTreatment {
-  product_name: string; // Real names e.g. Imidacloprid
+  product_name: string; 
   purpose: string;
   dosage_per_liter: string;
   application_frequency: string;
@@ -64,7 +64,7 @@ export interface PesticideAnalysis {
   status: 'GENUINE' | 'FAKE' | 'EXPIRED';
   product_name: string;
   manufacturer: string;
-  expiry_date_check: string; // "Valid" or "Expired"
+  expiry_date_check: string; 
   confidence: number;
   details: string;
 }
