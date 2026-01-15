@@ -7,6 +7,8 @@
     <title>Botanica AI - Precise Gardening</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Babel standalone for browser-side JSX/TSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
       :root {
         --nature-green: #064e3b;
@@ -103,5 +105,7 @@
 </head>
   <body class="bg-slate-50 text-slate-900 selection:bg-emerald-100 selection:text-emerald-900 overflow-hidden">
     <div id="root"></div>
+    <!-- Load the main entry point with Babel transpilation -->
+    <script type="text/babel" data-type="module" src="index.tsx"></script>
   </body>
 </html>
